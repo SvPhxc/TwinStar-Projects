@@ -1,3 +1,4 @@
+import json
 import os
 import tkinter as tk
 from tkinter import ttk, filedialog
@@ -58,8 +59,8 @@ class MultiPageApp(tk.Tk):
 
         self.frames = {}
         pages = (StartPage, ConnectionPage, 
-                 ArchiveUploadPage, Cert_Manager_ConfigPage, Settings_T_config_tool, 
-                 Settings_M_config_tool, Apn_config, Wpa_supplicant, ChangesLogPage, Generate_New_Password)
+                 ArchiveUploadPage, Cert_Manager_ConfigPage, Settings_T_config_tool, Settings_T_Merchant, 
+                 Settings_M_config_tool, Settings_M_Merchant, Apn_config, Wpa_supplicant, ChangesLogPage, Generate_New_Password)
         
         self.pages_control = list(pages)
         for F in pages:
@@ -68,13 +69,12 @@ class MultiPageApp(tk.Tk):
             frame.grid(row=0, column=0, sticky="nsew")
 
 
-        self.button_next = ttk.Button(self, text="Next", command=lambda: self.next_frame())
+        self.button_next = ttk.Button(self, text="Next", command=self.next_frame)
         self.button_next.pack(side='right')
         
 
-        self.back_button = ttk.Button(self, text="Back", command=lambda: self.back_frame())
+        self.back_button = ttk.Button(self, text="Back", command=self.back_frame)
         self.back_button.pack(side='left')
-        self.back_button.configure(state="disabled")
 
         
         self.protocol("WM_DELETE_WINDOW", self.confirm)
@@ -87,14 +87,12 @@ class MultiPageApp(tk.Tk):
             self.destroy()
             self.delete_files()
 
-    
-        
     # def show_frame(self, page):
     #     frame = self.frames[page]
     #     frame.tkraise()
     def delete_files(self):
-        files_to_delete = ['config_changes_cert.log', 'config_changes_T.log',
-                'config_changes_M.log', 'config_changes_apn.log', 'config_changes_wpa.log',
+        files_to_delete = ['config_changes_cert.log', 'config_changes_T.log', 'config_changes_T_merchant.log',
+                'config_changes_M.log', 'config_changes_M_merchant.log', 'config_changes_apn.log', 'config_changes_wpa.log',
                 'cert_manager.conf', 'settings_T.py', 'settings_M.py', 'apn.cfg',
                 'wpa_supplicant-wlan0.conf']
         logging.shutdown()
@@ -104,6 +102,16 @@ class MultiPageApp(tk.Tk):
             except FileNotFoundError:
                 continue
             print(f"Deleted {i}")
+
+        # command = 'rm -rf /home/g2k/.g2k_patch/*'
+
+        # stdin, stdout, stderr = self.ssh_client.exec_command(command)
+        # exit_status = stdout.channel.recv_exit_status()
+        # if exit_status == 0:
+        #     print(f"Command {command} executed successfully")
+        # else:
+        #     print(f"Command {command} failed with exit status {exit_status}")
+
         
     # def diable_back_button(self):
     #     self.back_button.configure(state='disabled')
@@ -130,7 +138,6 @@ class MultiPageApp(tk.Tk):
 class StartPage(tk.Frame):
     def __init__(self, parent, controller):
         tk.Frame.__init__(self, parent)
-        # controller.diable_back_button()
         label = ttk.Label(self, text="Terminal Configuration Tool", font=("Arial", 20))
         label.pack(pady=100)      
 
@@ -433,7 +440,9 @@ class ArchiveUploadPage(tk.Frame):
         self.controller.next_frame()
 
         self.controller.frames[Settings_T_config_tool].set_ssh_connection(self.ssh_client)
+        self.controller.frames[Settings_T_Merchant].set_ssh_connection(self.ssh_client)
         self.controller.frames[Settings_M_config_tool].set_ssh_connection(self.ssh_client)
+        self.controller.frames[Settings_M_Merchant].set_ssh_connection(self.ssh_client)
         self.controller.frames[Apn_config].set_ssh_connection(self.ssh_client)
         self.controller.frames[Wpa_supplicant].set_ssh_connection(self.ssh_client)
         self.controller.frames[ChangesLogPage].set_ssh_connection(self.ssh_client)
@@ -506,7 +515,6 @@ class Cert_Manager_ConfigPage(tk.Frame):
         return logger
 
     def save_env(self):
-        print(self.env)
         if self.env[0] != self.env[-1]:
             last_api_schema = self.matches[-1][0] + self.env[-1]
             self.data_cert = re.sub(self.pattern, last_api_schema, self.data_cert, flags=re.MULTILINE)
@@ -516,7 +524,6 @@ class Cert_Manager_ConfigPage(tk.Frame):
                 cert_file.write(self.data_cert)
 
         # Update the environment text in the target page
-        print(self.env_text)
         self.controller.frames[Settings_T_config_tool].set_env(self.env_text)
         self.controller.next_frame()
 
@@ -530,17 +537,10 @@ class Settings_T_config_tool(tk.Frame):
 
         self.set_T_data = None
 
-        self.display_model = []
-        self.no_bo_connection = []
-        self.epos_interface = []
-        self.g2k_bo_server_address_env = []
-        self.epos_internal_link = []
-        self.reader_port_name = []
-        self.ing_epos_server_address = []
-        self.ing_bo_server_port = []
-        self.g2k_bo_hb_internal = []
-        self.g2k_bo_server_port = []
-        self.psp_name = []
+        self.g2k_bo_server_address_env = None
+        self.data = {}
+        self.variables = {}
+
 
         self.dropdown_options = {
             'DISPLAY_MODEL': ['SSD1305_OLED_128x32', 'ST7789V_LCD_240x320'],
@@ -559,16 +559,15 @@ class Settings_T_config_tool(tk.Frame):
         open(self.config_log_filename, 'w').close()
 
 
-        self.label_text = ttk.Label(self, text='Settings_T Config Page')
-        self.label_text.pack(pady=30)
-        
+        self.label_text = ttk.Label(self, text='Settings_T System')
+        self.label_text.grid(row=0, column=0, columnspan=2)
+        self.grid_columnconfigure(1, weight=1)
 
     def set_env(self, env_text):
-        print(env_text)
         if env_text == 'production':
-            self.g2k_bo_server_address_env.append('mqtt.gemini2k.com') 
+            self.g2k_bo_server_address_env = 'mqtt.gemini2k.com' 
         elif env_text == 'test':
-            self.g2k_bo_server_address_env.append('mqtt-test.gemini2k.com')
+            self.g2k_bo_server_address_env = 'mqtt-test.gemini2k.com'
         self.show_data()
         
 
@@ -582,125 +581,86 @@ class Settings_T_config_tool(tk.Frame):
         with open(self.settings_t_local, 'r') as set_t_file:
             self.set_T_data = set_t_file.read()
 
-            display_model_match = re.search(r"'DISPLAY_MODEL': '(.*)',", self.set_T_data)
-            no_bo_connection_match = re.search(r"'NO_BO_CONNECTION': (.*),", self.set_T_data)
-            epos_interface_match = re.search(r"'EPOS_INTERFACE':\s*'([^#']*)',", self.set_T_data)
-            g2k_bo_server_address_env_match = re.search(r"'G2K_BO_SERVER_ADDRESS': '(.*)',", self.set_T_data)
-            epos_internal_link_match = re.search(r"'EPOS_INTERNAL_LINK': (.*),", self.set_T_data)
-            reader_port_name_match = re.search(r"'READER_PORT_NAME': b\'(.*)',", self.set_T_data)
-            ing_epos_server_address_match = re.search(r"'ING_EPOS_SERVER_ADDRESS': '(.*)',", self.set_T_data)
-            ing_bo_server_port_match = re.search(r"'ING_EPOS_SERVER_PORT': (.*),", self.set_T_data)
-            g2k_bo_hb_internal_match = re.search(r"'G2K_BO_HB_INTERVAL': (.*),", self.set_T_data)
-            g2k_bo_server_port_match = re.search(r"'G2K_BO_SERVER_PORT': (.*),", self.set_T_data)
-            psp_name_match = re.search(r"'PSP_NAME':\s*'(.*)',", self.set_T_data)
+            display_model_match = re.search(r"'DISPLAY_MODEL': '(.*)',", self.set_T_data) #merchant
+            no_bo_connection_match = re.search(r"'NO_BO_CONNECTION': (.*),", self.set_T_data) #merchant
+            epos_interface_match = re.search(r"'EPOS_INTERFACE':\s*'([^#']*)',", self.set_T_data) #merchant
+            g2k_bo_server_address_env_match = re.search(r"'G2K_BO_SERVER_ADDRESS': '(.*)',", self.set_T_data) #system
+            epos_internal_link_match = re.search(r"'EPOS_INTERNAL_LINK': (.*),", self.set_T_data) #merchant
+            reader_port_name_match = re.search(r"'READER_PORT_NAME': b\'(.*)',", self.set_T_data) #merchant
+            ing_epos_server_address_match = re.search(r"'ING_EPOS_SERVER_ADDRESS': '(.*)',", self.set_T_data) #system
+            ing_bo_server_port_match = re.search(r"'ING_EPOS_SERVER_PORT': (.*),", self.set_T_data) #system
+            g2k_bo_hb_internal_match = re.search(r"'G2K_BO_HB_INTERVAL': (.*),", self.set_T_data) #system
+            g2k_bo_server_port_match = re.search(r"'G2K_BO_SERVER_PORT': (.*),", self.set_T_data) #system
+            psp_name_match = re.search(r"'PSP_NAME':\s*'(.*)',", self.set_T_data) #merchant
+
+            # plugins - merchant
 
             if display_model_match:
-                self.display_model.append(display_model_match.group(1).strip())
+                self.data['DISPLAY_MODEL'] = display_model_match.group(1).strip()
 
             if no_bo_connection_match:
-                self.no_bo_connection.append(no_bo_connection_match.group(1).strip())
+                self.data['NO_BO_CONNECTION'] = no_bo_connection_match.group(1).strip()
             
             if epos_interface_match:
-                self.epos_interface.append(epos_interface_match.group(1).strip())
+                self.data['EPOS_INTERFACE'] = epos_interface_match.group(1).strip()
             
             if g2k_bo_server_address_env_match:
-                self.g2k_bo_server_address_env.insert(0, g2k_bo_server_address_env_match.group(1).strip())
+                self.data['G2K_BO_SERVER_ADDRESS'] = g2k_bo_server_address_env_match.group(1).strip()
             
             if epos_internal_link_match:
-                self.epos_internal_link.append(epos_internal_link_match.group(1).strip())
+                self.data['EPOS_INTERNAL_LINK'] = epos_internal_link_match.group(1).strip()
             
             if reader_port_name_match:
-                self.reader_port_name.append(reader_port_name_match.group(1).strip())
+                self.data['READER_PORT_NAME'] = reader_port_name_match.group(1).strip()
             
             if ing_epos_server_address_match:
-                self.ing_epos_server_address.append(ing_epos_server_address_match.group(1).strip())
+                self.data['ING_EPOS_SERVER_ADDRESS'] = ing_epos_server_address_match.group(1).strip()
             
             if ing_bo_server_port_match:
-                self.ing_bo_server_port.append(ing_bo_server_port_match.group(1).strip())
+                self.data['ING_EPOS_SERVER_PORT'] = ing_bo_server_port_match.group(1).strip()
             
             if g2k_bo_hb_internal_match:
-                self.g2k_bo_hb_internal.append(g2k_bo_hb_internal_match.group(1).strip())
+                self.data['G2K_BO_HB_INTERVAL'] = g2k_bo_hb_internal_match.group(1).strip()
             
             if g2k_bo_server_port_match:
-                self.g2k_bo_server_port.append(g2k_bo_server_port_match.group(1).strip())
+                self.data['G2K_BO_SERVER_PORT'] = g2k_bo_server_port_match.group(1).strip()
             
             if psp_name_match:
-                self.psp_name.append(psp_name_match.group(1).strip())
+                self.data['PSP_NAME'] = psp_name_match.group(1).strip()
 
         
-        display_model_label = ttk.Label(self, text="DISPLAY_MODEL")
-        display_model_label.pack()
-        self.display_model_combo = ttk.Combobox(self, values=self.dropdown_options['DISPLAY_MODEL'], state="readonly")
-        self.display_model_combo.set(self.display_model[0])  # Set default value if found
-        self.display_model_combo.pack()
+        for key, value in self.data.items():
+            if key in self.dropdown_options.keys():
+                label = ttk.Label(self, text=key)
+                label.grid(sticky='w', padx=20, pady=5)
+                var = tk.StringVar(value=str(value))
+                entry = ttk.Combobox(self, values=self.dropdown_options[key], state="readonly", textvariable=var, width=30)  # Set default value
+                entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+
+            elif key == 'G2K_BO_SERVER_ADDRESS':
+                label = ttk.Label(self, text=key)
+                label.grid(sticky='w', padx=20, pady=5)
+                var = tk.StringVar(value=str(value))
+                var.set(self.g2k_bo_server_address_env)
+                entry = ttk.Entry(self, textvariable=var, width=30, state='readonly')
+                entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+            else:
+                label = ttk.Label(self, text=key)
+                label.grid(sticky='w', padx=20, pady=5)
+                var = tk.StringVar(value=str(value))
+                entry = ttk.Entry(self, textvariable=var, width=30)
+                entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
+
         
-
-        no_bo_connection_label = ttk.Label(self, text="NO_BO_CONNECTION")
-        no_bo_connection_label.pack()
-        self.no_bo_connection_combo = ttk.Combobox(self, values=self.dropdown_options['NO_BO_CONNECTION'], state="readonly")
-        self.no_bo_connection_combo.set(self.no_bo_connection[0])  # Set default value
-        self.no_bo_connection_combo.pack()
-        
-
-        epos_interface_label = ttk.Label(self, text="EPOS_INTERFACE")
-        epos_interface_label.pack()
-        self.epos_interface_combo = ttk.Combobox(self, values=self.dropdown_options['EPOS_INTERFACE'], state="readonly")
-        self.epos_interface_combo.set(self.epos_interface[0])  # Set default value
-        self.epos_interface_combo.pack()
-
-        g2k_bo_server_address_env_label = ttk.Label(self, text="G2K_BO_SERVER_ADDRESS")
-        g2k_bo_server_address_env_label.pack()
-        self.g2k_bo_server_address_env_entry = ttk.Entry(self)
-        self.g2k_bo_server_address_env_entry.insert(0, self.g2k_bo_server_address_env[1])
-        self.g2k_bo_server_address_env_entry.configure(state='readonly')
-        self.g2k_bo_server_address_env_entry.pack()
-
-        epos_internal_link_label = ttk.Label(self, text="EPOS_INTERNAL_LINK")
-        epos_internal_link_label.pack()
-        self.epos_internal_link_combo = ttk.Combobox(self, values=self.dropdown_options['EPOS_INTERNAL_LINK'], state="readonly")
-        self.epos_internal_link_combo.set(self.epos_internal_link[0])  # Set default value
-        self.epos_internal_link_combo.pack()
-
-        reader_port_name_label = ttk.Label(self, text="READER_PORT_NAME")
-        reader_port_name_label.pack()
-        self.reader_port_name_combo = ttk.Combobox(self, values=self.dropdown_options['READER_PORT_NAME'], state="readonly")
-        self.reader_port_name_combo.set(self.reader_port_name[0])  # Set default value
-        self.reader_port_name_combo.pack()
-        
-        ing_epos_server_address_label = ttk.Label(self, text="ING_EPOS_SERVER_ADDRESS")
-        ing_epos_server_address_label.pack()
-        self.ing_epos_server_address_entry = ttk.Entry(self)
-        self.ing_epos_server_address_entry.insert(0, self.ing_epos_server_address[0])
-        self.ing_epos_server_address_entry.pack()
-
-        ing_bo_server_port_label = ttk.Label(self, text="ING_EPOS_SERVER_PORT")
-        ing_bo_server_port_label.pack()
-        self.ing_bo_server_port_entry = ttk.Entry(self)
-        self.ing_bo_server_port_entry.insert(0, self.ing_bo_server_port[0])
-        self.ing_bo_server_port_entry.pack()
-
-        g2k_bo_hb_internal_label = ttk.Label(self, text="G2K_BO_HB_INTERVAL")
-        g2k_bo_hb_internal_label.pack()
-        self.g2k_bo_hb_internal_entry = ttk.Entry(self)
-        self.g2k_bo_hb_internal_entry.insert(0, self.g2k_bo_hb_internal[0])
-        self.g2k_bo_hb_internal_entry.pack()
-
-
-        g2k_bo_server_port_label = ttk.Label(self, text="G2K_BO_SERVER_PORT")
-        g2k_bo_server_port_label.pack()
-        self.g2k_bo_server_port_entry = ttk.Entry(self)
-        self.g2k_bo_server_port_entry.insert(0, self.g2k_bo_server_port[0])
-        self.g2k_bo_server_port_entry.pack()
-
-        psp_name_label = ttk.Label(self, text="PSP_NAME")
-        psp_name_label.pack()
-        self.psp_name_entry = ttk.Entry(self)
-        self.psp_name_entry.insert(0, self.psp_name[0])
-        self.psp_name_entry.pack()
 
 
         save_button = ttk.Button(self, text="Save", command=self.save_env)
-        save_button.pack(pady=10)
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
 
     def setup_config_changes_logger(self):
         logger = logging.getLogger("config_changes_T")
@@ -714,71 +674,146 @@ class Settings_T_config_tool(tk.Frame):
 
         return logger
     
-
+                # self.data[key] = new_value
+                # self.config_changes_logger.info(f"Changed '{key}' from '{old_value}' to '{new_value}'")
     def save_env(self):
-        self.display_model.append(self.display_model_combo.get()) 
-        self.no_bo_connection.append(self.no_bo_connection_combo.get())
-        self.epos_interface.append(self.epos_interface_combo.get())
-        self.g2k_bo_server_address_env.append(self.g2k_bo_server_address_env_entry.get())
-        self.epos_internal_link.append(self.epos_internal_link_combo.get())
-        self.reader_port_name.append(self.reader_port_name_combo.get())
-        self.ing_epos_server_address.append(self.ing_epos_server_address_entry.get())
-        self.ing_bo_server_port.append(self.ing_bo_server_port_entry.get())
-        self.g2k_bo_hb_internal.append(self.g2k_bo_hb_internal_entry.get())
-        self.g2k_bo_server_port.append(self.g2k_bo_server_port_entry.get())
-        self.psp_name.append(self.psp_name_entry.get())
-
         open(self.config_log_filename, 'w').close()
-        
-        if self.display_model[0] != self.display_model[-1]:
-            self.set_T_data = re.sub(r"'DISPLAY_MODEL': '(.*)',", f"'DISPLAY_MODEL': '{self.display_model[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'DISPLAY_MODEL' from '{self.display_model[0]}' to '{self.display_model[-1]}'")
-        
-        if self.no_bo_connection[0] != self.no_bo_connection[-1]:
-            self.set_T_data = re.sub(r"'NO_BO_CONNECTION': (.*),", f"'NO_BO_CONNECTION': {self.no_bo_connection[-1]},", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'NO_BO_CONNECTION' from {self.no_bo_connection[0]} to {self.no_bo_connection[-1]}")
-        
-        if self.epos_interface[0] != self.epos_interface[-1]:
-            self.set_T_data = re.sub(r"'EPOS_INTERFACE':\s*'([^#']*)',", f"'EPOS_INTERFACE': '{self.epos_interface[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'EPOS_INTERFACE' from '{self.epos_interface[0]}' to '{self.epos_interface[-1]}'")
-        
-        if self.g2k_bo_server_address_env[0] != self.g2k_bo_server_address_env[-1]:
-            self.set_T_data = re.sub(r"'G2K_BO_SERVER_ADDRESS': '(.*)',", f"'G2K_BO_SERVER_ADDRESS': '{self.g2k_bo_server_address_env[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'G2K_BO_SERVER_ADDRESS' from '{self.g2k_bo_server_address_env[0]}' to '{self.g2k_bo_server_address_env[-1]}'")
-        
-        if self.epos_internal_link[0] != self.epos_internal_link[-1]:
-            self.set_T_data = re.sub(r"'EPOS_INTERNAL_LINK': (.*),", f"'EPOS_INTERNAL_LINK': {self.epos_internal_link[-1]},", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'EPOS_INTERNAL_LINK' from {self.epos_internal_link[0]} to {self.epos_internal_link[-1]}")
-        
-        if self.reader_port_name[0] != self.reader_port_name[-1]:
-            self.set_T_data = re.sub(r"'READER_PORT_NAME': b\'(.*)',", f"'READER_PORT_NAME': '{self.reader_port_name[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'READER_PORT_NAME' from '{self.reader_port_name[0]}' to '{self.reader_port_name[-1]}'")
-        
-        if self.ing_epos_server_address[0] != self.ing_epos_server_address[-1]:
-            self.set_T_data = re.sub(r"'ING_EPOS_SERVER_ADDRESS': '(.*)',", f"'ING_EPOS_SERVER_ADDRESS': '{self.ing_epos_server_address[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'ING_EPOS_SERVER_ADDRESS' from '{self.ing_epos_server_address[0]}' to '{self.ing_epos_server_address[-1]}'")
-        
-        if self.ing_bo_server_port[0] != self.ing_bo_server_port[-1]:
-            self.set_T_data = re.sub(r"'ING_EPOS_SERVER_PORT': (.*),", f"'ING_EPOS_SERVER_PORT': {self.ing_bo_server_port[-1]},", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'ING_EPOS_SERVER_PORT' from {self.ing_bo_server_port[0]} to {self.ing_bo_server_port[-1]}")
-        
-        if self.g2k_bo_hb_internal[0] != self.g2k_bo_hb_internal[-1]:
-            self.set_T_data = re.sub(r"'G2K_BO_HB_INTERVAL': (.*),", f"'G2K_BO_HB_INTERVAL': {self.g2k_bo_hb_internal[-1]},", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'G2K_BO_HB_INTERVAL' from {self.g2k_bo_hb_internal[0]} to {self.g2k_bo_hb_internal[-1]}")
-        
-        if self.g2k_bo_server_port[0] != self.g2k_bo_server_port[-1]:
-            self.set_T_data = re.sub(r"'G2K_BO_SERVER_PORT': (.*),", f"'G2K_BO_SERVER_PORT': {self.g2k_bo_server_port[-1]},", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'G2K_BO_SERVER_PORT' from {self.g2k_bo_server_port[0]} to {self.g2k_bo_server_port[-1]}")
-        
-        if self.psp_name[0] != self.psp_name[-1]:
-            self.set_T_data = re.sub(r"'PSP_NAME':\s*'(.*)',", f"'PSP_NAME': '{self.psp_name[-1]}',", self.set_T_data)
-            self.config_changes_logger.info(f"Changed 'PSP_NAME' from '{self.psp_name[0]}' to '{self.psp_name[-1]}'")
-        
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                if key == 'DISPLAY_MODEL':
+                    self.set_T_data = re.sub(r"'DISPLAY_MODEL': '(.*)',", f"'DISPLAY_MODEL': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'DISPLAY_MODEL' from '{old_value}' to '{new_value}'")
+                elif key == 'NO_BO_CONNECTION':
+                    self.set_T_data = re.sub(r"'NO_BO_CONNECTION': (.*),", f"'NO_BO_CONNECTION': {new_value},", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'NO_BO_CONNECTION' from {old_value} to {new_value}")
+                elif key == 'EPOS_INTERFACE':
+                    self.set_T_data = re.sub(r"'EPOS_INTERFACE':\s*'([^#']*)',", f"'EPOS_INTERFACE': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'EPOS_INTERFACE' from '{old_value}' to '{new_value}'")
+                elif key == 'G2K_BO_SERVER_ADDRESS':
+                    self.set_T_data = re.sub(r"'G2K_BO_SERVER_ADDRESS': '(.*)',", f"'G2K_BO_SERVER_ADDRESS': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'G2K_BO_SERVER_ADDRESS' from '{old_value}' to '{new_value}'")
+                elif key == 'EPOS_INTERNAL_LINK':
+                    self.set_T_data = re.sub(r"'EPOS_INTERNAL_LINK': (.*),", f"'EPOS_INTERNAL_LINK': {new_value},", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'EPOS_INTERNAL_LINK' from {old_value} to {new_value}")
+                elif key == 'READER_PORT_NAME':
+                    self.set_T_data = re.sub(r"'READER_PORT_NAME': b\'(.*)',", f"'READER_PORT_NAME': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'READER_PORT_NAME' from '{old_value}' to '{new_value}'")
+                elif key == 'ING_EPOS_SERVER_ADDRESS':
+                    self.set_T_data = re.sub(r"'ING_EPOS_SERVER_ADDRESS': '(.*)',", f"'ING_EPOS_SERVER_ADDRESS': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'ING_EPOS_SERVER_ADDRESS' from '{old_value}' to '{new_value}'")
+                elif key == 'ING_EPOS_SERVER_PORT':
+                    self.set_T_data = re.sub(r"'ING_EPOS_SERVER_PORT': (.*),", f"'ING_EPOS_SERVER_PORT': {new_value},", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'ING_EPOS_SERVER_PORT' from {old_value} to {new_value}")
+                elif key == 'G2K_BO_HB_INTERVAL':
+                    self.set_T_data = re.sub(r"'G2K_BO_HB_INTERVAL': (.*),", f"'G2K_BO_HB_INTERVAL': {new_value},", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'G2K_BO_HB_INTERVAL' from {old_value} to {new_value}")
+                elif key == 'G2K_BO_SERVER_PORT':
+                    self.set_T_data = re.sub(r"'G2K_BO_SERVER_PORT': (.*),", f"'G2K_BO_SERVER_PORT': {new_value},", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'G2K_BO_SERVER_PORT' from {old_value} to {new_value}")
+                elif key == 'PSP_NAME':
+                    self.set_T_data = re.sub(r"'PSP_NAME':\s*'(.*)',", f"'PSP_NAME': '{new_value}',", self.set_T_data)
+                    self.config_changes_logger.info(f"Changed 'PSP_NAME' from '{old_value}' to '{new_value}'")
+
+
 
         with open(self.settings_t_local, 'w') as set_t_file:
             set_t_file.write(self.set_T_data)
 
         self.controller.next_frame()
+
+class Settings_T_Merchant(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
+        self.ssh_client = None
+        self.settings_t_json_terminal = ''
+        self.settings_t_json_loacl = 'settings_t.json'
+
+        self.data = self.load_json()
+        self.variables = {}
+
+        self.config_log_filename = 'config_changes_T_merchant.log'
+        self.config_changes_logger = self.setup_config_changes_logger()
+        open(self.config_log_filename, 'w').close()
+
+        label = ttk.Label(self, text="Settings_T Merchant")
+        label.grid(row=0, column=0, columnspan=2)
+        self.grid_columnconfigure(1, weight=1)
+        
+        self.dropdown_options = {
+            'DISPLAY_MODEL': ['SSD1305_OLED_128x32', 'ST7789V_LCD_240x320'],
+            'NO_BO_CONNECTION': [True, False],
+            'EPOS_INTERFACE': ['G2K', 'Ingenico'],
+            'EPOS_INTERNAL_LINK': [True, False],
+            'READER_PORT_NAME': ['/dev/ttyS1', '/dev/ttyS2'],
+            # Add more dropdown options as needed
+        }
+
+        self.create_widgets()
+
+    def set_ssh_connection(self, ssh_client):
+        self.ssh_client = ssh_client
+        # self.sftp = self.ssh_client.open_sftp()
+        # self.sftp.get(self.settings_t_json_terminal, self.settings_t_json_loacl)
+
+    def load_json(self):
+        with open(self.settings_t_json_loacl, 'r') as file:
+            return json.load(file)
+
+    def save_json(self):
+        with open(self.settings_t_json_loacl, 'w') as file:
+            json.dump(self.data, file, indent=2)
+            print('saved json_t data')
+
+        self.controller.next_frame()        
+
+    def create_widgets(self):
+        for key, value in self.data.items():
+            if key in self.dropdown_options.keys():
+                label = ttk.Label(self, text=key)
+                label.grid(sticky='w', padx=20, pady=5)
+                var = tk.StringVar(value=str(value))
+                entry = ttk.Combobox(self, values=self.dropdown_options[key], state="readonly", textvariable=var, width=30)  # Set default value
+                entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+            else:
+                label = ttk.Label(self, text=key)
+                label.grid(sticky='w', padx=20, pady=5)
+                
+                var = tk.StringVar(value=str(value))
+                entry = ttk.Entry(self, textvariable=var, width=30)
+                entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
+
+        save_button = ttk.Button(self, text="Save Changes", command=self.on_save)
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
+
+    def setup_config_changes_logger(self):
+        logger = logging.getLogger("config_changes_T_merchant")
+        logger.setLevel(logging.INFO)
+
+        formatter = logging.Formatter('%(asctime)s - settings_T_merchant %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+        file_handler = logging.FileHandler(self.config_log_filename)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        return logger
+    
+    def on_save(self):
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                self.data[key] = new_value
+                self.config_changes_logger.info(f"Changed '{key}' from '{old_value}' to '{new_value}'")
+
+        self.save_json()
 
 class Settings_M_config_tool(tk.Frame):
     def __init__(self, parent, controller):
@@ -790,8 +825,8 @@ class Settings_M_config_tool(tk.Frame):
 
         self.set_M_data = None
 
-        self.customer_reference = []
-        self.payment_currency = []
+        self.data = {}
+        self.variables = {}
 
         self.settings_M_terminal ='/home/g2k/.g2k_patch/production/G2K_MDB_Cashless/settings_M.py'
         self.settings_M_local = 'settings_M.py'
@@ -800,8 +835,9 @@ class Settings_M_config_tool(tk.Frame):
         self.config_changes_logger = self.setup_config_changes_logger()
         open(self.config_log_filename, 'w').close()
 
-        self.label_text = ttk.Label(self, text='Settings_M Config Page')
-        self.label_text.pack(pady=30)
+        label = ttk.Label(self, text='Settings_M System')
+        label.grid(row=0, column=0, columnspan=2)
+        self.grid_columnconfigure(1, weight=1)
         
 
     def set_ssh_connection(self, ssh_client):
@@ -819,28 +855,28 @@ class Settings_M_config_tool(tk.Frame):
             payment_currency_match = re.search(r"'PAYMENT_CURRENCY': (.*),", self.set_M_data)
 
             if customer_refrence_match:
-                self.customer_reference.append(customer_refrence_match.group(1).strip())
+                 self.data['CUSTOMER_REFERENCE'] = customer_refrence_match.group(1).strip()
 
 
             if payment_currency_match:
-                self.payment_currency.append(payment_currency_match.group(1).strip())
-        
-        cr_label = ttk.Label(self, text="CUSTOMER_REFERENCE")
-        cr_label.pack()
+                self.data['PAYMENT_CURRENCY'] = payment_currency_match.group(1).strip()
 
-        self.cr_entry = ttk.Entry(self)
-        self.cr_entry.insert(0, self.customer_reference[0])
-        self.cr_entry.pack()
         
-        pc_label = ttk.Label(self, text="PAYMENT_CURRENCY")
-        pc_label.pack()
+        for key, value in self.data.items():
+            label = ttk.Label(self, text=key)
+            label.grid(sticky='w', padx=20, pady=5)
+            
+            var = tk.StringVar(value=str(value))
+            entry = ttk.Entry(self, textvariable=var, width=30)
+            entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
 
-        self.pc_entry = ttk.Entry(self)
-        self.pc_entry.insert(0, self.payment_currency[0])
-        self.pc_entry.pack()
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
 
         save_button = ttk.Button(self, text="Save", command=self.save_env)
-        save_button.pack(pady=10)
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
 
     def setup_config_changes_logger(self):
         logger = logging.getLogger("config_changes_M")
@@ -854,24 +890,100 @@ class Settings_M_config_tool(tk.Frame):
 
         return logger
     def save_env(self):
-        self.customer_reference.append(self.cr_entry.get())
-        self.payment_currency.append(self.pc_entry.get())
-
         open(self.config_log_filename, 'w').close()
-
-        if self.customer_reference[0] != self.customer_reference[-1]:
-            self.set_M_data = re.sub(r"'CUSTOMER_REFERENCE': '(.*)',", f"'CUSTOMER_REFERENCE': '{self.customer_reference[-1]}',", self.set_M_data)
-            self.config_changes_logger.info(f"Changed 'CUSTOMER_REFERENCE' from '{self.customer_reference[0]}' to '{self.customer_reference[-1]}'")
-        
-        if self.payment_currency[0] != self.payment_currency[-1]:
-            self.set_M_data = re.sub(r"'PAYMENT_CURRENCY': (.*),", f"'PAYMENT_CURRENCY': {self.payment_currency[-1]},", self.set_M_data)
-            self.config_changes_logger.info(f"Changed 'PAYMENT_CURRENCY' from {self.payment_currency[0]} to {self.payment_currency[-1]}")
-        
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                if key == 'CUSTOMER_REFERENCE':
+                    self.set_M_data = re.sub(r"'CUSTOMER_REFERENCE': '(.*)',", f"'CUSTOMER_REFERENCE': '{new_value}',", self.set_M_data)
+                    self.config_changes_logger.info(f"Changed 'CUSTOMER_REFERENCE' from '{old_value}' to '{new_value}'")
+                elif key == 'PAYMENT_CURRENCY':
+                    self.set_M_data = re.sub(r"'PAYMENT_CURRENCY': (.*),", f"'PAYMENT_CURRENCY': {new_value},", self.set_M_data)
+                    self.config_changes_logger.info(f"Changed 'PAYMENT_CURRENCY' from {old_value} to {new_value}")
         
         with open(self.settings_M_local, 'w') as set_m_file:
             set_m_file.write(self.set_M_data)
 
         self.controller.next_frame()
+
+class Settings_M_Merchant(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
+        self.ssh_client = None
+        self.settings_t_json_terminal = ''
+        self.settings_t_json_loacl = 'settings_M.json'
+
+        self.data = self.load_json()
+        self.variables = {}
+
+        self.config_log_filename = 'config_changes_M_merchant.log'
+        self.config_changes_logger = self.setup_config_changes_logger()
+        open(self.config_log_filename, 'w').close()
+
+        label = ttk.Label(self, text="Settings_M Merchant")
+        label.grid(row=0, column=0, columnspan=2)
+        # self.grid_rowconfigure(1, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+        self.create_widgets()
+
+    def set_ssh_connection(self, ssh_client):
+        self.ssh_client = ssh_client
+        # self.sftp = self.ssh_client.open_sftp()
+        # self.sftp.get(self.settings_t_json_terminal, self.settings_t_json_loacl)
+
+    def load_json(self):
+        with open(self.settings_t_json_loacl, 'r') as file:
+            return json.load(file)
+
+    def save_json(self):
+        with open(self.settings_t_json_loacl, 'w') as file:
+            json.dump(self.data, file, indent=2)
+            print('saved json_t data')
+
+        self.controller.next_frame()        
+        logging.info("Changes saved to JSON")
+
+    def create_widgets(self):
+        for key, value in self.data.items():
+            label = ttk.Label(self, text=key)
+            label.grid(sticky='w', padx=20, pady=5)
+
+            var = tk.StringVar(value=str(value))
+            entry = ttk.Entry(self, textvariable=var)
+            entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
+
+        save_button = ttk.Button(self, text="Save Changes", command=self.on_save, width=50)
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
+
+    def setup_config_changes_logger(self):
+        logger = logging.getLogger("config_changes_M_merchant")
+        logger.setLevel(logging.INFO)
+
+        formatter = logging.Formatter('%(asctime)s - settings_M_merchant %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+        file_handler = logging.FileHandler(self.config_log_filename)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+        return logger
+    
+    def on_save(self):
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                self.data[key] = new_value
+                self.config_changes_logger.info(f"Changed '{key}' from '{old_value}' to '{new_value}'")
+
+        self.save_json()
 
 class Apn_config(tk.Frame):
     def __init__(self, parent, controller):
@@ -884,14 +996,15 @@ class Apn_config(tk.Frame):
 
         self.apn_data = None
 
-        self.apn_value = []
-        self.port_value = []
+        self.data = {}
+        self.variables = {}
 
         self.apn_cfg_terminal = '/opt/4G_modems/apn.cfg'
         self.apn_cfg_local = 'apn.cfg'
 
-        self.label_text = ttk.Label(self, text='Apn.cfg')
-        self.label_text.pack(pady=30)
+        label = ttk.Label(self, text='Apn.cfg')
+        label.grid(row=0, column=0, columnspan=2)
+        self.grid_columnconfigure(1, weight=1)
 
         self.config_log_filename = 'config_changes_apn.log'
         self.config_changes_logger = self.setup_config_changes_logger()
@@ -913,27 +1026,27 @@ class Apn_config(tk.Frame):
             port_match = re.search(r'PORT:(.*)', self.apn_data)
 
             if apn_match:
-                self.apn_value.append(apn_match.group(1).strip())
+                self.data['APN'] = apn_match.group(1).strip()
+
 
             if port_match:
-                self.port_value.append(port_match.group(1).strip())
+                self.data['PORT'] = port_match.group(1).strip()
+
+        for key, value in self.data.items():
+            label = ttk.Label(self, text=key)
+            label.grid(sticky='w', padx=20, pady=5)
+            
+            var = tk.StringVar(value=str(value))
+            entry = ttk.Entry(self, textvariable=var, width=30)
+            entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
+
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
         
-        apn_label = ttk.Label(self, text="APN")
-        apn_label.pack()
-
-        self.apn_entry = ttk.Entry(self)
-        self.apn_entry.insert(0, self.apn_value[0])
-        self.apn_entry.pack()
-
-        port_label = ttk.Label(self, text="PORT")
-        port_label.pack()
-
-        self.port_entry = ttk.Entry(self)
-        self.port_entry.insert(0, self.port_value[0])
-        self.port_entry.pack()
-
         save_button = ttk.Button(self, text="Save", command=self.save_env)
-        save_button.pack(pady=10)
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
 
     def setup_config_changes_logger(self):
         logger = logging.getLogger("config_changes_apn")
@@ -948,18 +1061,17 @@ class Apn_config(tk.Frame):
         return logger
 
     def save_env(self):
-        self.apn_value.append(self.apn_entry.get())
-        self.port_value.append(self.port_entry.get())
-
         open(self.config_log_filename, 'w').close()
-        
-        if self.apn_value[0] != self.apn_value[-1]:
-            self.apn_data = re.sub(r'APN:(.*)', f'APN:{self.apn_value[-1]}', self.apn_data)
-            self.config_changes_logger.info(f"Changed 'APN' from '{self.apn_value[0]}' to '{self.apn_value[-1]}'")
-        
-        if self.port_value[0] != self.port_value[-1]:
-            self.apn_data = re.sub(r'PORT:(.*)', f'PORT:{self.port_value[-1]}', self.apn_data)
-            self.config_changes_logger.info(f"Changed 'PORT' from '{self.port_value[0]}' to '{self.port_value[-1]}'")
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                if key == 'APN':
+                    self.apn_data = re.sub(r'APN:(.*)', f'APN:{new_value}', self.apn_data)
+                    self.config_changes_logger.info(f"Changed 'APN' from '{old_value}' to '{new_value}'")
+                elif key == 'PORT':
+                    self.apn_data = re.sub(r'PORT:(.*)', f'PORT:{new_value}', self.apn_data)
+                    self.config_changes_logger.info(f"Changed 'PORT' from '{old_value}' to '{new_value}'")
 
         with open('apn.cfg', 'w') as apn_file:
             apn_file.write(self.apn_data)
@@ -975,15 +1087,15 @@ class Wpa_supplicant(tk.Frame):
 
         self.wpa_data = None
         
-        self.ssid = []
-        self.psk = []
-        self.priority = []
+        self.data = {}
+        self.variables = {}
 
         self.wpa_supplicant_terminal = '/etc/wpa_supplicant/wpa_supplicant-wlan0.conf'
         self.wpa_supplicant_local = 'wpa_supplicant-wlan0.conf'
 
-        self.label_text = ttk.Label(self, text='wpa_supplicant-wlan0.conf')
-        self.label_text.pack(pady=30)
+        label = ttk.Label(self, text='wpa_supplicant-wlan0.conf')
+        label.grid(row=0, column=0, columnspan=2)
+        self.grid_columnconfigure(1, weight=1)
         
         self.config_log_filename = 'config_changes_wpa.log'
         self.config_changes_logger = self.setup_config_changes_logger()
@@ -1007,38 +1119,28 @@ class Wpa_supplicant(tk.Frame):
             priority_match = re.search(r'priority=(.*)', self.wpa_data)
 
             if ssid_match:
-                self.ssid.append(ssid_match.group(1).strip())
+                self.data['ssid'] = ssid_match.group(1).strip()
 
             if psk_match:
-                self.psk.append(psk_match.group(1).strip())
+                self.data['psk'] = psk_match.group(1).strip()
 
             if priority_match:
-                self.priority.append(priority_match.group(1).strip())
+                self.data['priority'] = priority_match.group(1).strip()
         
-        ssid_label = ttk.Label(self, text="SSID")
-        ssid_label.pack()
+        for key, value in self.data.items():
+            label = ttk.Label(self, text=key)
+            label.grid(sticky='w', padx=20, pady=5)
+            
+            var = tk.StringVar(value=str(value))
+            entry = ttk.Entry(self, textvariable=var, width=30)
+            entry.grid(row=self.grid_size()[1]-1, column=1, sticky='e', padx=20)
 
-        self.ssid_entry = ttk.Entry(self)
-        self.ssid_entry.insert(0, self.ssid[0])
-        self.ssid_entry.pack()
-
-        psk_label = ttk.Label(self, text="PSK")
-        psk_label.pack()
-
-        self.psk_entry = ttk.Entry(self)
-        self.psk_entry.insert(0, self.psk[0])
-        self.psk_entry.pack()
-        
-        priority_label = ttk.Label(self, text="Priority")
-        priority_label.pack()
-
-        self.priority_entry = ttk.Entry(self)
-        self.priority_entry.insert(0, self.priority[0])
-        self.priority_entry.pack()
-
+            self.variables[key] = {
+                'old_value': value,
+                'new_value': var
+            }
         save_button = ttk.Button(self, text="Save", command=self.save_env)
-        save_button.pack(pady=10)
-
+        save_button.grid(row=self.grid_size()[1], columnspan=2)
     def setup_config_changes_logger(self):
         logger = logging.getLogger("config_changes_wpa")
         logger.setLevel(logging.INFO)
@@ -1052,25 +1154,22 @@ class Wpa_supplicant(tk.Frame):
         return logger
 
     def save_env(self):
-        self.ssid.append(self.ssid_entry.get())
-        self.psk.append(self.psk_entry.get())
-        self.priority.append(self.priority_entry.get())
-
         open(self.config_log_filename, 'w').close()
+        for key, var in self.variables.items():
+            new_value = var['new_value'].get()
+            old_value = var['old_value']
+            if new_value != old_value:
+                if key == 'ssid':
+                    self.wpa_data = re.sub(r'ssid="(.*)"', f'ssid="{new_value}"', self.wpa_data)
+                    self.config_changes_logger.info(f"Changed 'ssid' from '{old_value}' to '{new_value}'")
 
-        if self.ssid[0] != self.ssid[-1]:
-            self.wpa_data = re.sub(r'ssid="(.*)"', f'ssid="{self.ssid[-1]}"', self.wpa_data)
-            self.config_changes_logger.info(f"Changed 'ssid' from '{self.ssid[0]}' to '{self.ssid[-1]}'")
-        
-        if self.psk[0] != self.psk[-1]:
-            self.wpa_data = re.sub(r'psk="(.*)"', f'psk="{self.psk[0]}"', self.wpa_data)
-            self.config_changes_logger.info(f"Changed 'psk' from '{self.psk[-2]}' to '{self.psk[-1]}'")
-        
-        if self.priority[0] != self.priority[-1]:
-            self.wpa_data = re.sub(r'priority=(.*)', f'priority={self.priority[-1]}', self.wpa_data)
-            self.config_changes_logger.info(f"Changed 'priority' from '{self.priority[0]}' to '{self.priority[-1]}'")
-        
-
+                elif key == 'psk':
+                    self.wpa_data = re.sub(r'psk="(.*)"', f'psk="{new_value}"', self.wpa_data)
+                    self.config_changes_logger.info(f"Changed 'psk' from '{old_value}' to '{new_value}'")
+                elif key == 'priority':
+                    self.wpa_data = re.sub(r'priority=(.*)', f'priority={new_value}', self.wpa_data)
+                    self.config_changes_logger.info(f"Changed 'priority' from '{old_value}' to '{new_value}'")
+ 
         with open(self.wpa_supplicant_local, 'w') as wpa_file:
             wpa_file.write(self.wpa_data)
 
@@ -1091,7 +1190,13 @@ class ChangesLogPage(tk.Frame):
 
         save_button = ttk.Button(self, text="Save", command=self.save_files_to_terminal_and_delete)
         save_button.pack()
-        self.log_files = ['config_changes_cert.log', 'config_changes_T.log', 'config_changes_M.log', 'config_changes_apn.log', 'config_changes_wpa.log']  # List of log files
+        self.log_files = ['config_changes_cert.log', 
+                          'config_changes_T.log', 
+                          'config_changes_T_merchant.log',
+                          'config_changes_M.log', 
+                          'config_changes_M_merchant.log',
+                          'config_changes_apn.log', 
+                          'config_changes_wpa.log']  # List of log files
 
         self.read_and_display_log()
 
@@ -1124,8 +1229,11 @@ class ChangesLogPage(tk.Frame):
                 ['wpa_supplicant-wlan0.conf', '/home/g2k/.g2k_patch/wpa_supplicant-wlan0.conf']]
 
         for i in files:
+            # if os.stat(self.log_files[files.index(i)]).st_size != 0: 
             self.sftp.put(i[0], i[1])
             print(f"Saved {i[0]}")
+            # else:
+            #     continue
 
         commands = ['echo WhenInDoubt,SayNothingAndMoveOn.1973-2130 | sudo -k -S mv /home/g2k/.g2k_patch/apn.cfg /opt/4G_modems/',
                     'echo WhenInDoubt,SayNothingAndMoveOn.1973-2130 | sudo -k -S mv /home/g2k/.g2k_patch/wpa_supplicant-wlan0.conf /etc/wpa_supplicant/',
